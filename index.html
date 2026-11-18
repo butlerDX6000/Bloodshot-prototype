@@ -56,66 +56,42 @@ scene.background = new THREE.Color(0x101014);
 scene.fog = new THREE.Fog(0x101014, 15, 90);
 
 const camera = new THREE.PerspectiveCamera(
-  75,
-  window.innerWidth / window.innerHeight,
-  0.1,
-  1000
+  75, innerWidth / innerHeight, 0.1, 1000
 );
 
-camera.position.set(0, 2, 8);
+camera.position.set(0, 2, 12);
 
-const renderer = new THREE.WebGLRenderer({
-  antialias: true
-});
-
-renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setPixelRatio(
-  Math.min(window.devicePixelRatio, 2)
-);
-
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
 document.getElementById("game").appendChild(renderer.domElement);
 
-// Lighting
-const ambient = new THREE.AmbientLight(0xffffff, 0.5);
-scene.add(ambient);
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
 
 const redLight = new THREE.PointLight(0xff001e, 8, 35);
 redLight.position.set(0, 8, 0);
 scene.add(redLight);
 
-// Materials
-const floorMaterial = new THREE.MeshStandardMaterial({
-  color: 0x292929,
-  roughness: 0.9
-});
-
 const wallMaterial = new THREE.MeshStandardMaterial({
-  color: 0x17171c,
-  roughness: 0.8
+  color: 0x17171c
 });
 
-// Floor
 const floor = new THREE.Mesh(
   new THREE.PlaneGeometry(100, 100),
-  floorMaterial
+  new THREE.MeshStandardMaterial({ color: 0x292929 })
 );
-
 floor.rotation.x = -Math.PI / 2;
-floor.position.y = 0;
 scene.add(floor);
 
-// Grid
 const grid = new THREE.GridHelper(100, 50, 0x880018, 0x383838);
 grid.position.y = 0.02;
 scene.add(grid);
 
-// Arena walls
-function createWall(x, y, z, width, height, depth) {
+function createWall(x, y, z, w, h, d) {
   const wall = new THREE.Mesh(
-    new THREE.BoxGeometry(width, height, depth),
+    new THREE.BoxGeometry(w, h, d),
     wallMaterial
   );
-
   wall.position.set(x, y, z);
   scene.add(wall);
 }
@@ -125,40 +101,271 @@ createWall(0, 5, 25, 50, 10, 2);
 createWall(-25, 5, 0, 2, 10, 50);
 createWall(25, 5, 0, 2, 10, 50);
 
-// Arena pillars
 for (let x = -15; x <= 15; x += 10) {
   for (let z = -15; z <= 15; z += 10) {
     if (x === 0 && z === 0) continue;
-
     const pillar = new THREE.Mesh(
       new THREE.BoxGeometry(2, 7, 2),
       wallMaterial
     );
-
     pillar.position.set(x, 3.5, z);
     scene.add(pillar);
   }
 }
 
-// Camera starting position
-camera.position.set(0, 2, 12);
+// PLAYER
+const player = {
+  x: 0,
+  y: 1.7,
+  z: 12,
+  velocityY: 0,
+  yaw: 0,
+  pitch: 0,
+  crouching: false,
+  sliding: false,
+  slideTime: 0,
+  grounded: true
+};
 
-function animate() {
+const keys = {};
+let moveX = 0;
+let moveZ = 0;
+
+function pressKey(key, value) {
+  keys[key.toLowerCase()] = value;
+}
+
+document.addEventListener("keydown", e => {
+  pressKey(e.code, true);
+
+  if (e.code === "Space" && player.grounded) {
+    player.velocityY = 7;
+    player.grounded = false;
+  }
+
+  if (e.code === "KeyC") {
+    player.crouching = true;
+  }
+
+  if (e.code === "ControlLeft" && !player.sliding) {
+    player.sliding = true;
+    player.slideTime = 0.8;
+  }
+});
+
+document.addEventListener("keyup", e => {
+  pressKey(e.code, false);
+
+  if (e.code === "KeyC") {
+    player.crouching = false;
+  }
+});
+
+// MOUSE CAMERA
+renderer.domElement.addEventListener("click", () => {
+  if (matchMedia("(pointer:fine)").matches) {
+    renderer.domElement.requestPointerLock();
+  }
+});
+
+document.addEventListener("mousemove", e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+
+  player.yaw -= e.movementX * 0.002;
+  player.pitch -= e.movementY * 0.002;
+  player.pitch = Math.max(-1.4, Math.min(1.4, player.pitch));
+});
+
+// MOBILE CONTROLS
+const mobile = document.createElement("div");
+mobile.innerHTML = `
+<style>
+.mobile-controls {
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  display:none;
+}
+.mobile-controls button {
+  pointer-events:auto;
+  position:absolute;
+  border:1px solid #ff263b;
+  background:#181818cc;
+  color:white;
+  border-radius:50%;
+  width:65px;
+  height:65px;
+  font-weight:bold;
+  touch-action:none;
+}
+#jump {right:25px;bottom:115px;}
+#crouch {right:105px;bottom:35px;}
+#slide {right:25px;bottom:35px;}
+#stick {
+  position:absolute;
+  left:35px;
+  bottom:45px;
+  width:120px;
+  height:120px;
+  border:2px solid #777;
+  border-radius:50%;
+  pointer-events:auto;
+  touch-action:none;
+}
+#knob {
+  position:absolute;
+  left:35px;
+  top:35px;
+  width:50px;
+  height:50px;
+  border-radius:50%;
+  background:#b90019;
+}
+@media (pointer:coarse) {
+  .mobile-controls {display:block;}
+}
+</style>
+<div class="mobile-controls">
+  <div id="stick"><div id="knob"></div></div>
+  <button id="jump">JUMP</button>
+  <button id="crouch">CROUCH</button>
+  <button id="slide">SLIDE</button>
+</div>
+`;
+document.body.appendChild(mobile);
+
+const stick = document.getElementById("stick");
+const knob = document.getElementById("knob");
+
+stick.addEventListener("pointerdown", e => {
+  stick.setPointerCapture(e.pointerId);
+  updateStick(e);
+});
+
+stick.addEventListener("pointermove", e => {
+  if (stick.hasPointerCapture(e.pointerId)) updateStick(e);
+});
+
+function updateStick(e) {
+  const r = stick.getBoundingClientRect();
+  const dx = e.clientX - (r.left + r.width / 2);
+  const dy = e.clientY - (r.top + r.height / 2);
+  const distance = Math.min(35, Math.hypot(dx, dy));
+  const angle = Math.atan2(dy, dx);
+
+  moveX = Math.cos(angle) * distance / 35;
+  moveZ = Math.sin(angle) * distance / 35;
+
+  knob.style.transform =
+    `translate(${moveX * 35}px, ${moveZ * 35}px)`;
+}
+
+stick.addEventListener("pointerup", () => {
+  moveX = 0;
+  moveZ = 0;
+  knob.style.transform = "";
+});
+
+function mobileButton(id, down, up) {
+  const button = document.getElementById(id);
+  button.addEventListener("pointerdown", e => {
+    e.preventDefault();
+    down();
+  });
+  button.addEventListener("pointerup", up);
+  button.addEventListener("pointercancel", up);
+}
+
+mobileButton("jump", () => {
+  if (player.grounded) {
+    player.velocityY = 7;
+    player.grounded = false;
+  }
+}, () => {});
+
+mobileButton("crouch",
+  () => player.crouching = true,
+  () => player.crouching = false
+);
+
+mobileButton("slide", () => {
+  if (!player.sliding) {
+    player.sliding = true;
+    player.slideTime = 0.8;
+  }
+}, () => {});
+
+// GAME LOOP
+let previousTime = performance.now();
+
+function animate(now) {
   requestAnimationFrame(animate);
+
+  const dt = Math.min((now - previousTime) / 1000, 0.05);
+  previousTime = now;
+
+  const forward =
+    (keys.KeyW ? 1 : 0) - (keys.KeyS ? 1 : 0) - moveZ;
+
+  const sideways =
+    (keys.KeyD ? 1 : 0) - (keys.KeyA ? 1 : 0) + moveX;
+
+  let speed = keys.ShiftLeft ? 13 : 8;
+
+  if (player.crouching) speed = 4;
+
+  if (player.sliding) {
+    speed = 18;
+    player.slideTime -= dt;
+
+    if (player.slideTime <= 0) {
+      player.sliding = false;
+    }
+  }
+
+  const length = Math.hypot(forward, sideways) || 1;
+  const f = forward / length;
+  const s = sideways / length;
+
+  player.x += (
+    -Math.sin(player.yaw) * f +
+    Math.cos(player.yaw) * s
+  ) * speed * dt;
+
+  player.z += (
+    -Math.cos(player.yaw) * f -
+    Math.sin(player.yaw) * s
+  ) * speed * dt;
+
+  player.x = Math.max(-22, Math.min(22, player.x));
+  player.z = Math.max(-22, Math.min(22, player.z));
+
+  player.velocityY -= 20 * dt;
+  player.y += player.velocityY * dt;
+
+  const floorHeight = player.crouching || player.sliding ? 1 : 1.7;
+
+  if (player.y <= floorHeight) {
+    player.y = floorHeight;
+    player.velocityY = 0;
+    player.grounded = true;
+  }
+
+  camera.position.set(player.x, player.y, player.z);
+  camera.rotation.order = "YXZ";
+  camera.rotation.y = player.yaw;
+  camera.rotation.x = player.pitch;
+
   renderer.render(scene, camera);
 }
 
-animate();
+requestAnimationFrame(animate);
 
 window.addEventListener("resize", () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.aspect = innerWidth / innerHeight;
   camera.updateProjectionMatrix();
-
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setSize(innerWidth, innerHeight);
 });
-
-document.getElementById("message").textContent =
-  "ARENA 001 | ENVIRONMENT ONLINE";
 </script>
 
 </body>
