@@ -135,8 +135,8 @@ function pressKey(key, value) {
   keys[key] = value;
 }
 
-document.addEventListener("keydown", e => {
-  pressKey(e.code, true);
+window.addEventListener("keydown", e => {
+  keys[e.code] = true;
 
   if (e.code === "Space" && player.grounded) {
     player.velocityY = 7;
@@ -153,8 +153,8 @@ document.addEventListener("keydown", e => {
   }
 });
 
-document.addEventListener("keyup", e => {
-  pressKey(e.code, false);
+window.addEventListener("keyup", e => {
+  keys[e.code] = false;
 
   if (e.code === "KeyC") {
     player.crouching = false;
